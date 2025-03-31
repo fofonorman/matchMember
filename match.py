@@ -61,7 +61,7 @@ class MatchingGUI:
             
             # 更新狀態
             if repeated_pairs:
-                self.update_status(f"已完成，有 {len(repeated_pairs)} 組重複配對")
+                self.update_status(f"已完成，有重複配對，請檢查 excel 檔案")
             else:
                 self.update_status("已完成，無重複配對")
             
