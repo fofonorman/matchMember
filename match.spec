@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='match',
+    name='Match',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -39,7 +39,7 @@ exe = EXE(
 )
 app = BUNDLE(
     exe,
-    name='match.app',
+    name='Match.app',
     icon='MyIcon.icns',
     bundle_identifier=None,
 )

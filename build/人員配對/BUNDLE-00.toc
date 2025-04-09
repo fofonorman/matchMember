@@ -1,0 +1,1 @@
+([('人員配對', '/Users/tingpan/Documents/matchMember/dist/人員配對', 'EXECUTABLE')],)
