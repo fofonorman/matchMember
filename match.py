@@ -41,14 +41,14 @@ class MatchingGUI:
         # 提示文字
         tk.Label(self.window, text="(檔案將存放在桌面，請包含 .xlsx 副檔名)").pack(pady=5)
         
-        # 配對按鈕
-        self.match_button = tk.Button(self.window, text="配對", command=self.do_matching)
-        self.match_button.pack(pady=20)
-        
         # 狀態顯示（使用文字框替代標籤）
         self.status_text = tk.Text(self.window, height=3, width=35)
-        self.status_text.pack(pady=10)
+        self.status_text.pack(pady=10, fill=tk.X, padx=10)
         self.status_text.config(state='disabled')  # 預設為不可編輯
+        
+        # 配對按鈕
+        self.match_button = tk.Button(self.window, text="配對", command=self.execute_matching)
+        self.match_button.pack(pady=20)
         
     def update_status(self, message: str, is_error: bool = False):
         """更新狀態文字框的內容"""
@@ -61,11 +61,10 @@ class MatchingGUI:
             self.status_text.config(fg="green")
         self.status_text.config(state='disabled')  # 恢復為不可編輯
         
-    def do_matching(self):
+    def execute_matching(self):
+        """執行配對並儲存結果"""
         try:
             filename = self.filename_var.get()
-            
-            # 檢查檔案名稱
             if not filename.endswith('.xlsx'):
                 self.update_status("失敗：檔案名稱必須以 .xlsx 結尾", True)
                 return
@@ -76,21 +75,31 @@ class MatchingGUI:
             # 執行配對
             matches, repeated_pairs = matcher.match_people()
             
+            print(f"=============== 配對結果統計 ===============")
+            print(f"總配對數: {len(matches)}")
+            print(f"重複配對數: {len(repeated_pairs)}")
+            print(f"重複配對列表: {repeated_pairs}")
+            
             # 儲存結果
             matcher.save_matching_result(matches, repeated_pairs)
             
             # 更新狀態
             if repeated_pairs:
-                self.update_status("已完成，有重複配對，請檢查 Excel 檔案")
+                self.update_status(f"已完成，有 {len(repeated_pairs)} 組重複配對，請檢查 Excel 檔案")
             else:
                 self.update_status("已完成，無重複配對")
             
             # 顯示配對結果
             result_text = "配對結果：\n" + "\n".join([" - ".join(match) for match in matches])
+            if repeated_pairs:
+                result_text += "\n\n重複配對：\n" + "\n".join([" - ".join(pair) for pair in repeated_pairs])
+            
             messagebox.showinfo("配對完成", result_text)
             
         except Exception as e:
             self.update_status(f"失敗：{str(e)}", True)
+            import traceback
+            traceback.print_exc()
     
     def run(self):
         self.window.mainloop()
@@ -129,42 +138,52 @@ class MatchingSystem:
             
             # 確保有「姓名」欄位
             if '姓名' not in df.columns:
+                print("警告：Excel 檔案中未找到「姓名」欄位")
                 return history_set
             
+            print(f"檢查 Excel 檔案中的所有欄位: {df.columns.tolist()}")
+            
             # 獲取所有配對者欄位（除了「姓名」以外的所有欄位）
-            partner_columns = [col for col in df.columns if col != '姓名']
+            partner_columns = [col for col in df.columns if col != '姓名' and '配對者' in col]
             
             # 如果沒有配對者欄位，返回空集合
             if not partner_columns:
+                print("警告：Excel 檔案中未找到任何配對者欄位")
                 return history_set
             
             # 打印檢查欄位，用於偵錯
             print(f"歷史配對欄位: {partner_columns}")
             
             # 遍歷每一行（每個人）
-            for _, row in df.iterrows():
+            for idx, row in df.iterrows():
                 person = row['姓名']
                 if not isinstance(person, str) or not person.strip():
                     continue
                     
                 # 移除人名前的 @ 符號進行比較
-                person_clean = person[1:] if person.startswith('@') else person
+                person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                print(f"檢查人員: {person} -> {person_clean}")
                     
                 # 遍歷該人的所有配對者
                 for col in partner_columns:
                     partner = row[col]
-                    if isinstance(partner, str) and partner.strip():
+                    if not pd.isna(partner) and isinstance(partner, str) and partner.strip():
                         # 移除配對者名字前的 @ 符號進行比較
-                        partner_clean = partner[1:] if partner.startswith('@') else partner
+                        partner_clean = partner[1:].strip() if partner.startswith('@') else partner.strip()
+                        print(f"檢查配對者: {partner} -> {partner_clean}")
                         
                         # 將配對加入歷史記錄（使用不帶 @ 的名字）
-                        pair = tuple(sorted([person_clean.strip(), partner_clean.strip()]))
+                        pair = tuple(sorted([person_clean, partner_clean]))
                         history_set.add(pair)
                         print(f"添加歷史配對: {pair}")
             
+            print(f"總共找到 {len(history_set)} 組歷史配對")
+            print(f"完整的歷史配對清單: {history_set}")
             return history_set
         except Exception as e:
             print(f"讀取配對歷史時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
         return history_set
     
     def save_matching_result(self, matches: List[Tuple[str, ...]], repeated_pairs: List[Tuple[str, ...]] = None):
@@ -345,20 +364,22 @@ class MatchingSystem:
                             new_row[col] = row[col]
                         merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                 
-                # 保存回 Excel，保留參與配對人員
+                # 在寫入 Excel 前，保留原始參與配對人員
                 try:
+                    # 先嘗試讀取現有的參與配對人員
                     existing_participants_df = pd.read_excel(self.excel_path, sheet_name='參與配對人員')
                 except:
+                    # 如果讀取失敗，則使用空的 DataFrame
                     existing_participants_df = pd.DataFrame(columns=['姓名'])
                 
-                with pd.ExcelWriter(self.excel_path) as writer:
-                    merged_df.to_excel(writer, sheet_name='人員名單', index=False)
-                    existing_participants_df.to_excel(writer, sheet_name='參與配對人員', index=False)
+                # 直接使用 openpyxl 保存資料，避免 Pandas 修改欄位名稱
+                from copy import copy
                 
-                # 標記重複配對
-                if repeated_pairs:
-                    # 再次打開檔案來設定樣式
-                    workbook = openpyxl.load_workbook(self.excel_path)
+                # 先讀取原始的工作簿，保留所有原始格式和內容
+                workbook = openpyxl.load_workbook(self.excel_path)
+                
+                # 如果人員名單工作表已存在，則獲取它
+                if '人員名單' in workbook.sheetnames:
                     people_sheet = workbook['人員名單']
                     
                     # 找到姓名列的索引
@@ -371,15 +392,153 @@ class MatchingSystem:
                     if name_col_idx is None:
                         name_col_idx = 1
                     
+                    # 獲取所有現有欄位
+                    existing_cols = []
+                    for col_idx, cell in enumerate(people_sheet[1], 1):
+                        if cell.value:
+                            existing_cols.append((col_idx, cell.value))
+                    
+                    # 移動所有在姓名欄之後的列，為新配對欄位騰出空間
+                    # 從最右邊的列開始往右移動
+                    for i in range(len(existing_cols) - 1, 0, -1):
+                        if existing_cols[i][0] > name_col_idx:
+                            target_col_idx = existing_cols[i][0] + len(new_columns)
+                            source_col_idx = existing_cols[i][0]
+                            
+                            # 移動整列數據
+                            for row_idx in range(1, people_sheet.max_row + 1):
+                                source_cell = people_sheet.cell(row=row_idx, column=source_col_idx)
+                                target_cell = people_sheet.cell(row=row_idx, column=target_col_idx)
+                                
+                                # 複製單元格值和樣式
+                                target_cell.value = source_cell.value
+                                if source_cell.has_style:
+                                    target_cell.font = copy(source_cell.font)
+                                    target_cell.border = copy(source_cell.border)
+                                    target_cell.fill = copy(source_cell.fill)
+                                    target_cell.number_format = copy(source_cell.number_format)
+                                    target_cell.protection = copy(source_cell.protection)
+                                    target_cell.alignment = copy(source_cell.alignment)
+                    
+                    # 在姓名列右側插入新的配對欄位
+                    for i, col_name in enumerate(new_columns):
+                        col_idx = name_col_idx + 1 + i
+                        people_sheet.cell(row=1, column=col_idx).value = col_name
+                    
+                    # 從 match_dict 中填入配對結果
+                    name_to_row_idx = {}
+                    for row_idx in range(2, people_sheet.max_row + 1):
+                        name = people_sheet.cell(row=row_idx, column=name_col_idx).value
+                        if name:
+                            # 儲存名稱和行索引的映射，便於填入配對結果
+                            name_clean = name[1:].strip() if isinstance(name, str) and name.startswith('@') else name
+                            name_to_row_idx[name_clean] = row_idx
+                            name_to_row_idx[f"@{name_clean}"] = row_idx
+                    
+                    # 填入配對結果
+                    for person, partners in match_dict.items():
+                        # 忽略可能的數字索引或其他非人名鍵
+                        if not isinstance(person, str):
+                            continue
+                            
+                        person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                        
+                        # 找到此人的行
+                        if person_clean in name_to_row_idx:
+                            row_idx = name_to_row_idx[person_clean]
+                            
+                            # 填入配對者
+                            for i, partner in enumerate(partners):
+                                if i < len(new_columns):  # 確保不會超出新增的列數
+                                    col_idx = name_col_idx + 1 + i
+                                    people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                        elif f"@{person_clean}" in name_to_row_idx:
+                            row_idx = name_to_row_idx[f"@{person_clean}"]
+                            
+                            # 填入配對者
+                            for i, partner in enumerate(partners):
+                                if i < len(new_columns):  # 確保不會超出新增的列數
+                                    col_idx = name_col_idx + 1 + i
+                                    people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                    
+                    # 添加新人員（不在現有名單中的人）
+                    for person, partners in match_dict.items():
+                        if not isinstance(person, str):
+                            continue
+                            
+                        person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                        person_with_at = f"@{person_clean}"
+                        
+                        # 檢查此人是否在現有名單中
+                        if person_clean not in name_to_row_idx and person_with_at not in name_to_row_idx:
+                            # 新增此人到名單最後
+                            row_idx = people_sheet.max_row + 1
+                            people_sheet.cell(row=row_idx, column=name_col_idx).value = person_with_at
+                            
+                            # 添加配對者
+                            for i, partner in enumerate(partners):
+                                if i < len(new_columns):
+                                    col_idx = name_col_idx + 1 + i
+                                    people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                            
+                            # 更新映射字典
+                            name_to_row_idx[person_clean] = row_idx
+                            name_to_row_idx[person_with_at] = row_idx
+                else:
+                    # 如果工作表不存在，則創建新的
+                    people_sheet = workbook.create_sheet('人員名單')
+                    
+                    # 初始化欄位名稱
+                    people_sheet.cell(row=1, column=1).value = '姓名'
+                    for i, col_name in enumerate(new_columns):
+                        people_sheet.cell(row=1, column=2 + i).value = col_name
+                    
+                    # 填入所有人員和配對結果
+                    row_idx = 2
+                    for person in people_list:
+                        people_sheet.cell(row=row_idx, column=1).value = f"@{person}"
+                        
+                        if person in match_dict:
+                            for i, partner in enumerate(match_dict[person]):
+                                if i < len(new_columns):
+                                    people_sheet.cell(row=row_idx, column=2 + i).value = partner
+                        
+                        row_idx += 1
+                
+                # 保存參與配對人員工作表
+                if '參與配對人員' in workbook.sheetnames:
+                    participants_sheet = workbook['參與配對人員']
+                    # 參與配對人員工作表保持不變
+                else:
+                    # 如果不存在，則創建新的
+                    participants_sheet = workbook.create_sheet('參與配對人員')
+                    participants_sheet.cell(row=1, column=1).value = '姓名'
+                
+                # 保存工作簿
+                workbook.save(self.excel_path)
+                
+                # 標記重複配對
+                if repeated_pairs:
+                    # 再次打開檔案來設定樣式
+                    workbook = openpyxl.load_workbook(self.excel_path)
+                    people_sheet = workbook['人員名單']
+                    
+                    # 找到姓名列和新配對欄位的索引
+                    name_col_idx = None
+                    new_col_indices = []
+                    
+                    for col_idx, cell in enumerate(people_sheet[1], 1):
+                        if cell.value == '姓名':
+                            name_col_idx = col_idx
+                        elif cell.value in new_columns:
+                            new_col_indices.append(col_idx)
+                    
+                    if name_col_idx is None:
+                        name_col_idx = 1
+                    
                     # 設定重複配對的樣式
                     yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
                     red_font = Font(color="FF0000", bold=True)
-                    
-                    # 只遍歷新配對欄位
-                    new_col_indices = []
-                    for col_idx, cell in enumerate(people_sheet[1], 1):
-                        if cell.value in new_columns:
-                            new_col_indices.append(col_idx)
                     
                     print(f"將檢查以下新配對欄位中的重複配對: {new_columns}")
                     print(f"新配對欄位索引: {new_col_indices}")
@@ -413,8 +572,8 @@ class MatchingSystem:
                                 partner_norm = str(partner).strip()
                             
                             # 獲取不帶 @ 且去除空格的人名
-                            person_norm = person_clean.strip().lower() if isinstance(person_clean, str) else str(person_clean).strip().lower()
-                            partner_norm = partner_norm.strip().lower()
+                            person_norm = person_clean.strip() if isinstance(person_clean, str) else str(person_clean).strip()
+                            partner_norm = partner_norm.strip()
                             
                             # 打印調試信息
                             print(f"檢查是否重複配對: {person_norm} - {partner_norm}")
@@ -476,7 +635,7 @@ class MatchingSystem:
                 with pd.ExcelWriter(self.excel_path) as writer:
                     people_df.to_excel(writer, sheet_name='人員名單', index=False)
                     existing_participants_df.to_excel(writer, sheet_name='參與配對人員', index=False)
-
+            
         except FileNotFoundError:
             # 如果檔案不存在，創建新的檔案
             import pandas as pd
@@ -639,8 +798,8 @@ class MatchingSystem:
                             partner_norm = str(partner).strip()
                         
                         # 獲取不帶 @ 且去除空格的人名
-                        person_norm = person_clean.strip().lower() if isinstance(person_clean, str) else str(person_clean).strip().lower()
-                        partner_norm = partner_norm.strip().lower()
+                        person_norm = person_clean.strip() if isinstance(person_clean, str) else str(person_clean).strip()
+                        partner_norm = partner_norm.strip()
                         
                         # 打印調試信息
                         print(f"檢查是否重複配對: {person_norm} - {partner_norm}")
@@ -663,16 +822,55 @@ class MatchingSystem:
         檢查配對是否有效
         - 檢查所有可能的2人和3人子組合是否出現在歷史記錄中
         """
+        # 標準化 pair 中的所有名稱（去除 @ 前綴）
+        normalized_pair = []
+        for name in pair:
+            norm_name = name
+            if isinstance(name, str):
+                if name.startswith('@'):
+                    norm_name = name[1:].strip()
+                else:
+                    norm_name = name.strip()
+            else:
+                norm_name = str(name).strip()
+            normalized_pair.append(norm_name)
+        
+        print(f"檢查配對是否有效: {normalized_pair}")
+        
         # 將 pair 中的所有可能 2 人組合檢查是否在歷史記錄中
-        for combo in combinations(pair, 2):
+        for combo in combinations(normalized_pair, 2):
             sorted_combo = tuple(sorted(combo))
+            print(f"檢查子配對: {sorted_combo}")
+            
+            # 直接檢查是否在歷史記錄中
             if sorted_combo in history:
+                print(f"發現重複配對 (直接匹配): {sorted_combo}")
+                return False
+            
+            # 更嚴格的檢查：遍歷歷史記錄中的每一對
+            for hist_pair in history:
+                if len(hist_pair) != 2:
+                    continue
+                    
+                # 標準化歷史配對中的名稱
+                hist_names = []
+                for p in hist_pair:
+                    p_norm = p.strip() if isinstance(p, str) else str(p).strip()
+                    hist_names.append(p_norm)
+                
+                # 轉換為集合進行比較
+                hist_set = set(hist_names)
+                combo_set = set(sorted_combo)
+                
+                if hist_set == combo_set:
+                    print(f"發現重複配對 (集合比較): {sorted_combo} vs {hist_names}")
                 return False
             
         # 如果是 3 人組合，還需要檢查完整的組合
-        if len(pair) == 3:
-            sorted_pair = tuple(sorted(pair))
+        if len(normalized_pair) == 3:
+            sorted_pair = tuple(sorted(normalized_pair))
             if sorted_pair in history:
+                print(f"發現重複的三人組: {sorted_pair}")
                 return False
             
         return True
@@ -713,8 +911,32 @@ class MatchingSystem:
         # 找出一個配對方案中的重複配對
         def find_repeated_pairs(matches: List[Tuple[str, ...]]) -> List[Tuple[str, ...]]:
             repeated = []
-            print(f"檢查重複配對方案，歷史記錄: {history}")
             
+            # 打印歷史配對記錄
+            print(f"檢查重複配對方案，歷史記錄數量: {len(history)}")
+            print(f"歷史配對記錄內容: {history}")
+            
+            # 如果沒有歷史記錄，直接返回空列表
+            if not history:
+                print("無歷史配對記錄，跳過重複配對檢測")
+                return repeated
+            
+            # 先將歷史配對標準化，確保更準確的比較
+            standardized_history = set()
+            for hist_pair in history:
+                std_pair = []
+                for name in hist_pair:
+                    if not isinstance(name, str):
+                        std_name = str(name).strip()
+                    elif name.startswith('@'):
+                        std_name = name[1:].strip()
+                    else:
+                        std_name = name.strip()
+                    std_pair.append(std_name)
+                standardized_history.add(tuple(sorted(std_pair)))
+            
+            print(f"標準化後的歷史配對: {standardized_history}")
+                
             for match in matches:
                 # 檢查配對中是否有重複的人
                 if len(set(match)) != len(match):
@@ -732,7 +954,7 @@ class MatchingSystem:
                             name_norm = name.strip()
                     else:
                         name_norm = str(name).strip()
-                    normalized_match.append(name_norm.lower())  # 轉換為小寫
+                    normalized_match.append(name_norm)
                 
                 print(f"檢查配對方案: {normalized_match}")
                 
@@ -741,26 +963,44 @@ class MatchingSystem:
                     for j in range(i+1, len(normalized_match)):
                         person1 = normalized_match[i]
                         person2 = normalized_match[j]
-                        pair_to_check = (person1, person2)
+                        pair_to_check = tuple(sorted([person1, person2]))
                         
                         print(f"檢查配對組合: {pair_to_check}")
                         
-                        # 檢查這對配對是否在歷史記錄中
+                        # 方法1: 直接檢查標準化後的歷史記錄
+                        if pair_to_check in standardized_history:
+                            print(f"!!!找到重複配對 (標準化比較): {pair_to_check}!!!")
+                            if pair_to_check not in repeated:
+                                repeated.append(pair_to_check)
+                            continue
+                        
+                        # 方法2: 直接檢查原始歷史記錄
+                        if pair_to_check in history:
+                            print(f"!!!找到重複配對 (原始比較): {pair_to_check}!!!")
+                            if pair_to_check not in repeated:
+                                repeated.append(pair_to_check)
+                            continue
+                            
+                        # 方法3: 更全面的檢查，遍歷歷史記錄並進行集合比較
                         for hist_pair in history:
+                            if len(hist_pair) != 2:
+                                continue
+                                
                             # 標準化歷史配對
                             hist_names = []
                             for p in hist_pair:
-                                p_norm = p.lower().strip() if isinstance(p, str) else str(p).lower().strip()
+                                p_norm = p.strip() if isinstance(p, str) else str(p).strip()
                                 hist_names.append(p_norm)
                             
-                            print(f"與歷史記錄比較: {pair_to_check} vs {hist_names}")
+                            # 轉換為集合進行比較
+                            hist_set = set(hist_names)
+                            pair_set = set(pair_to_check)
                             
-                            # 檢查是否匹配（不考慮順序）
-                            if (person1 in hist_names and person2 in hist_names):
-                                new_pair = (person1, person2)
-                                print(f"!!!找到重複配對: {new_pair}!!!")
-                                if new_pair not in repeated:
-                                    repeated.append(new_pair)
+                            # 檢查兩個集合是否相同
+                            if pair_set == hist_set:
+                                print(f"!!!找到重複配對 (集合比較): {pair_to_check} vs {hist_names}!!!")
+                                if pair_to_check not in repeated:
+                                    repeated.append(pair_to_check)
                                 break
             
             print(f"最終重複配對列表: {repeated}")
