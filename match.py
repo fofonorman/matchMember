@@ -263,17 +263,21 @@ class MatchingSystem:
             print(f"配對字典: {match_dict}")
             
             # 創建人員名單 DataFrame
-            # 使用集合來去除重複人員，同時規範化名稱（去除 @ 前綴後再添加回去）
-            people_set = set()
-            for match in matches:
-                for person in match:
-                    # 規範化處理
-                    person_str = str(person) if not isinstance(person, str) else person
-                    person_norm = person_str[1:].strip() if person_str.startswith('@') else person_str.strip()
-                    people_set.add(person_norm)
+            # 收集所有參與配對的人員（包括配對者和被配對者）
+            all_people = set()
+            for person, partners in match_dict.items():
+                if isinstance(person, str):
+                    person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                    all_people.add(person_clean)
+                
+                # 添加所有配對者
+                for partner in partners:
+                    if isinstance(partner, str):
+                        partner_clean = partner[1:].strip() if partner.startswith('@') else partner.strip()
+                        all_people.add(partner_clean)
             
-            # 轉換回列表並排序
-            people_list = sorted(list(people_set))
+            # 使用 all_people 替代原來的方法
+            people_list = sorted(list(all_people))
             print(f"人員列表: {people_list}")
             
             import datetime
@@ -462,11 +466,21 @@ class MatchingSystem:
                                     people_sheet.cell(row=row_idx, column=col_idx).value = partner
                     
                     # 添加新人員（不在現有名單中的人）
+                    # 首先收集所有參與配對的人員（包括配對者和被配對者）
+                    all_people = set()
                     for person, partners in match_dict.items():
-                        if not isinstance(person, str):
-                            continue
-                            
-                        person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                        if isinstance(person, str):
+                            person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                            all_people.add(person_clean)
+                        
+                        # 添加所有配對者
+                        for partner in partners:
+                            if isinstance(partner, str):
+                                partner_clean = partner[1:].strip() if partner.startswith('@') else partner.strip()
+                                all_people.add(partner_clean)
+
+                    # 然後檢查每個人是否已在名單中，如果不在則添加
+                    for person_clean in all_people:
                         person_with_at = f"@{person_clean}"
                         
                         # 檢查此人是否在現有名單中
@@ -474,12 +488,22 @@ class MatchingSystem:
                             # 新增此人到名單最後
                             row_idx = people_sheet.max_row + 1
                             people_sheet.cell(row=row_idx, column=name_col_idx).value = person_with_at
+                            print(f"寫入人員名單A欄位: {person_with_at}")
                             
-                            # 添加配對者
-                            for i, partner in enumerate(partners):
-                                if i < len(new_columns):
-                                    col_idx = name_col_idx + 1 + i
-                                    people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                            # 添加配對者（如果此人在match_dict中有配對者）
+                            if person_clean in match_dict:
+                                partners = match_dict[person_clean]
+                                for i, partner in enumerate(partners):
+                                    if i < len(new_columns):
+                                        col_idx = name_col_idx + 1 + i
+                                        people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                            elif person_with_at in match_dict:
+                                partners = match_dict[person_with_at]
+                                partners = match_dict[person_with_at]
+                                for i, partner in enumerate(partners):
+                                    if i < len(new_columns):
+                                        col_idx = name_col_idx + 1 + i
+                                        people_sheet.cell(row=row_idx, column=col_idx).value = partner
                             
                             # 更新映射字典
                             name_to_row_idx[person_clean] = row_idx
@@ -594,6 +618,23 @@ class MatchingSystem:
             except Exception as e:
                 print(f"更新人員名單時出錯: {str(e)}")
                 # 如果讀取或處理現有資料失敗，就創建新的檔案（原有的邏輯）
+                
+                # 收集所有參與配對的人員（包括配對者和被配對者）
+                all_people = set()
+                for person, partners in match_dict.items():
+                    if isinstance(person, str):
+                        person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                        all_people.add(person_clean)
+                    
+                    # 添加所有配對者
+                    for partner in partners:
+                        if isinstance(partner, str):
+                            partner_clean = partner[1:].strip() if partner.startswith('@') else partner.strip()
+                            all_people.add(partner_clean)
+                
+                # 使用 all_people 替代原來的方法
+                people_list = sorted(list(all_people))
+                
                 # 創建 DataFrame
                 # 人名前加上 @
                 people_data = {'姓名': [f"@{person}" for person in people_list]}
@@ -696,7 +737,21 @@ class MatchingSystem:
                                 match_dict[person].append(partner_with_at)
             
             # 創建人員名單 DataFrame
-            people_list = list(set([person for match in matches for person in match]))
+            # 收集所有參與配對的人員（包括配對者和被配對者）
+            all_people = set()
+            for person, partners in match_dict.items():
+                if isinstance(person, str):
+                    person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                    all_people.add(person_clean)
+                
+                # 添加所有配對者
+                for partner in partners:
+                    if isinstance(partner, str):
+                        partner_clean = partner[1:].strip() if partner.startswith('@') else partner.strip()
+                        all_people.add(partner_clean)
+            
+            # 使用 all_people 替代原來的方法
+            people_list = sorted(list(all_people))
             
             import datetime
             today = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -707,6 +762,8 @@ class MatchingSystem:
             # 創建 DataFrame
             # 人名前加上 @
             people_data = {'姓名': [f"@{person}" for person in people_list]}
+            print(f"FileNotFoundError處理: 寫入人員名單A欄位的人員: {[f'@{person}' for person in people_list]}")
+
             
             # 添加配對者欄位
             for i in range(max_partners):
