@@ -484,11 +484,18 @@ class MatchingSystem:
                         person_with_at = f"@{person_clean}"
                         
                         # 檢查此人是否在現有名單中
+                        print(f"條件檢查結果: {person_clean not in name_to_row_idx and person_with_at not in name_to_row_idx}")
                         if person_clean not in name_to_row_idx and person_with_at not in name_to_row_idx:
-                            # 新增此人到名單最後
-                            row_idx = people_sheet.max_row + 1
+                            # 找到實際的最後一行（有數據的）
+                            actual_last_row = 1  # 從標題行開始
+                            for row in range(1, people_sheet.max_row + 1):
+                                if people_sheet.cell(row=row, column=name_col_idx).value:
+                                    actual_last_row = row
+                            
+                            # 新增此人到實際的最後一行之後
+                            row_idx = actual_last_row + 1
                             people_sheet.cell(row=row_idx, column=name_col_idx).value = person_with_at
-                            print(f"寫入人員名單A欄位: {person_with_at}")
+                            print(f"寫入人員名單A欄位: {person_with_at}, 在第 {row_idx} 行")
                             
                             # 添加配對者（如果此人在match_dict中有配對者）
                             if person_clean in match_dict:
