@@ -188,6 +188,11 @@ class MatchingSystem:
     
     def save_matching_result(self, matches: List[Tuple[str, ...]], repeated_pairs: List[Tuple[str, ...]] = None):
         """保存本次配對結果，並標記重複配對"""
+        print(f"=== save_matching_result 函數被調用 ===")
+        print(f"matches 參數: {matches}")
+        print(f"repeated_pairs 參數: {repeated_pairs}")
+        print(f"matches 長度: {len(matches) if matches else 0}")
+        
         import pandas as pd  # 確保 pd 在整個函數中可用
         
         if repeated_pairs is None:
@@ -261,6 +266,11 @@ class MatchingSystem:
             
             # 輸出配對結果供檢查
             print(f"配對字典: {match_dict}")
+            
+            # 在填充 Excel 前打印 match_dict
+            print("配對字典 (match_dict)：")
+            for person, partners in match_dict.items():
+                print(f"{person}: {partners}")
             
             # 創建人員名單 DataFrame
             # 收集所有參與配對的人員（包括配對者和被配對者）
@@ -368,6 +378,11 @@ class MatchingSystem:
                             new_row[col] = row[col]
                         merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                 
+                # 列印 merged_df 的最終結果
+                print("\n合併後的 DataFrame (merged_df)：")
+                print(merged_df)
+                print("\n")
+                
                 # 在寫入 Excel 前，保留原始參與配對人員
                 try:
                     # 先嘗試讀取現有的參與配對人員
@@ -409,6 +424,8 @@ class MatchingSystem:
                             target_col_idx = existing_cols[i][0] + len(new_columns)
                             source_col_idx = existing_cols[i][0]
                             
+                            print(f"移動欄位: 從第{source_col_idx}列移動到第{target_col_idx}列 (欄位名稱: {existing_cols[i][1]})")
+                            
                             # 移動整列數據
                             for row_idx in range(1, people_sheet.max_row + 1):
                                 source_cell = people_sheet.cell(row=row_idx, column=source_col_idx)
@@ -423,6 +440,15 @@ class MatchingSystem:
                                     target_cell.number_format = copy(source_cell.number_format)
                                     target_cell.protection = copy(source_cell.protection)
                                     target_cell.alignment = copy(source_cell.alignment)
+                                
+                                # 清空原來的位置
+                                source_cell.value = None
+                                # 重置樣式
+                                source_cell.font = openpyxl.styles.Font()
+                                source_cell.border = openpyxl.styles.Border()
+                                source_cell.fill = openpyxl.styles.PatternFill()
+                                source_cell.number_format = 'General'
+                                source_cell.alignment = openpyxl.styles.Alignment()
                     
                     # 在姓名列右側插入新的配對欄位
                     for i, col_name in enumerate(new_columns):
@@ -439,53 +465,95 @@ class MatchingSystem:
                             name_to_row_idx[name_clean] = row_idx
                             name_to_row_idx[f"@{name_clean}"] = row_idx
                     
+                    # 在創建 name_to_row_idx 映射後打印它
+                    print("名稱到行索引映射 (name_to_row_idx)：")
+                    print(name_to_row_idx)
+                    
                     # 填入配對結果
+                    print(f"=== 第一階段：填入已存在人員的配對結果 ===")
+                    print(f"開始填入配對結果，match_dict 有 {len(match_dict)} 個項目")
                     for person, partners in match_dict.items():
+                        print(f"\n處理人員: {person}, 配對者: {partners}")
                         # 忽略可能的數字索引或其他非人名鍵
                         if not isinstance(person, str):
+                            print(f"  跳過非字串鍵: {person}")
                             continue
                             
                         person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                        print(f"  清理後的人員名稱: {person_clean}")
+                        print(f"  檢查 {person_clean} 是否在 name_to_row_idx 中: {person_clean in name_to_row_idx}")
+                        print(f"  檢查 @{person_clean} 是否在 name_to_row_idx 中: {f'@{person_clean}' in name_to_row_idx}")
                         
                         # 找到此人的行
+                        row_found = False
                         if person_clean in name_to_row_idx:
                             row_idx = name_to_row_idx[person_clean]
+                            row_found = True
+                            print(f"  >>> 找到人員 {person_clean} 在第 {row_idx} 行")
                             
                             # 填入配對者
                             for i, partner in enumerate(partners):
                                 if i < len(new_columns):  # 確保不會超出新增的列數
                                     col_idx = name_col_idx + 1 + i
+                                    print(f"  >>> 寫入Excel配對者欄位: {partner} -> 第{row_idx}行第{col_idx}列")
                                     people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                                else:
+                                    print(f"  >>> 警告: 配對者 {partner} 超出可用欄位數量")
                         elif f"@{person_clean}" in name_to_row_idx:
                             row_idx = name_to_row_idx[f"@{person_clean}"]
+                            row_found = True
+                            print(f"  >>> 找到人員 @{person_clean} 在第 {row_idx} 行")
                             
                             # 填入配對者
                             for i, partner in enumerate(partners):
                                 if i < len(new_columns):  # 確保不會超出新增的列數
                                     col_idx = name_col_idx + 1 + i
+                                    print(f"  >>> 寫入Excel配對者欄位: {partner} -> 第{row_idx}行第{col_idx}列")
                                     people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                                else:
+                                    print(f"  >>> 警告: 配對者 {partner} 超出可用欄位數量")
+                        
+                        if not row_found:
+                            print(f"  >>> 警告: 在name_to_row_idx中找不到人員 {person_clean} 或 @{person_clean}")
+                            print(f"  >>> 此人員將在第二階段作為新人員處理")
                     
                     # 添加新人員（不在現有名單中的人）
-                    # 首先收集所有參與配對的人員（包括配對者和被配對者）
-                    all_people = set()
-                    for person, partners in match_dict.items():
-                        if isinstance(person, str):
-                            person_clean = person[1:].strip() if person.startswith('@') else person.strip()
-                            all_people.add(person_clean)
-                        
-                        # 添加所有配對者
-                        for partner in partners:
-                            if isinstance(partner, str):
-                                partner_clean = partner[1:].strip() if partner.startswith('@') else partner.strip()
-                                all_people.add(partner_clean)
+                    # 只收集本次真正參與配對的人員（從matches參數中獲取，而不是從配對者中獲取）
+                    print(f"=== 開始收集本次參與配對的人員 ===")
+                    print(f"原始matches參數: {matches}")
+                    
+                    # 從matches中收集所有參與配對的人員
+                    participating_people = set()
+                    for match in matches:
+                        for person in match:
+                            if isinstance(person, str):
+                                person_clean = person[1:].strip() if person.startswith('@') else person.strip()
+                                print(f"從matches添加參與配對人員: {person} -> 清理後: {person_clean}")
+                                participating_people.add(person_clean)
+                    
+                    print(f"本次參與配對的人員: {participating_people}")
+                    
+                    # 只處理真正參與配對的人員，不處理配對者中可能出現的歷史人員
+                    all_people = participating_people
 
                     # 然後檢查每個人是否已在名單中，如果不在則添加
+                    print(f"=== 開始檢查並添加新人員到Excel ===")
+                    print(f"需要處理的人員: {all_people}")
+                    print(f"現有name_to_row_idx: {name_to_row_idx}")
+                    
                     for person_clean in all_people:
                         person_with_at = f"@{person_clean}"
                         
                         # 檢查此人是否在現有名單中
-                        print(f"條件檢查結果: {person_clean not in name_to_row_idx and person_with_at not in name_to_row_idx}")
-                        if person_clean not in name_to_row_idx and person_with_at not in name_to_row_idx:
+                        is_new_person = person_clean not in name_to_row_idx and person_with_at not in name_to_row_idx
+                        print(f"\n處理人員: {person_clean}")
+                        print(f"  - person_clean在name_to_row_idx中: {person_clean in name_to_row_idx}")
+                        print(f"  - person_with_at在name_to_row_idx中: {person_with_at in name_to_row_idx}")
+                        print(f"  - 是否為新人員: {is_new_person}")
+                        
+                        if is_new_person:
+                            print(f"  >>> 開始添加新人員: {person_clean}")
+                            
                             # 找到實際的最後一行（有數據的）
                             actual_last_row = 1  # 從標題行開始
                             for row in range(1, people_sheet.max_row + 1):
@@ -494,27 +562,42 @@ class MatchingSystem:
                             
                             # 新增此人到實際的最後一行之後
                             row_idx = actual_last_row + 1
+                            print(f"  >>> 寫入Excel姓名欄位: {person_with_at} -> 第{row_idx}行第{name_col_idx}列")
                             people_sheet.cell(row=row_idx, column=name_col_idx).value = person_with_at
-                            print(f"寫入人員名單A欄位: {person_with_at}, 在第 {row_idx} 行")
                             
                             # 添加配對者（如果此人在match_dict中有配對者）
+                            print(f"  >>> 檢查配對者: person_clean={person_clean}, person_with_at={person_with_at}")
+                            print(f"  >>> match_dict中的鍵: {list(match_dict.keys())}")
+                            
+                            partners_found = False
                             if person_clean in match_dict:
                                 partners = match_dict[person_clean]
+                                print(f"  >>> 找到配對者(使用person_clean): {partners}")
+                                partners_found = True
                                 for i, partner in enumerate(partners):
                                     if i < len(new_columns):
                                         col_idx = name_col_idx + 1 + i
+                                        print(f"  >>> 寫入Excel配對者欄位: {partner} -> 第{row_idx}行第{col_idx}列")
                                         people_sheet.cell(row=row_idx, column=col_idx).value = partner
                             elif person_with_at in match_dict:
                                 partners = match_dict[person_with_at]
-                                partners = match_dict[person_with_at]
+                                print(f"  >>> 找到配對者(使用person_with_at): {partners}")
+                                partners_found = True
                                 for i, partner in enumerate(partners):
                                     if i < len(new_columns):
                                         col_idx = name_col_idx + 1 + i
+                                        print(f"  >>> 寫入Excel配對者欄位: {partner} -> 第{row_idx}行第{col_idx}列")
                                         people_sheet.cell(row=row_idx, column=col_idx).value = partner
+                            
+                            if not partners_found:
+                                print(f"  >>> 警告: 在match_dict中找不到 {person_clean} 或 {person_with_at} 的配對者")
                             
                             # 更新映射字典
                             name_to_row_idx[person_clean] = row_idx
                             name_to_row_idx[person_with_at] = row_idx
+                            print(f"  >>> 更新映射字典: {person_clean} 和 {person_with_at} -> 第{row_idx}行")
+                        else:
+                            print(f"  >>> 跳過已存在的人員: {person_clean}")
                 else:
                     # 如果工作表不存在，則創建新的
                     people_sheet = workbook.create_sheet('人員名單')
