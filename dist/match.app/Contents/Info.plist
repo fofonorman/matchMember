@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string>MyIcon.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>Match</string>
+	<string>com.tingpan.matchmember</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -17,8 +17,16 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.0.0</string>
+	<string>1.0.0</string>
+	<key>LSBackgroundOnly</key>
+	<string>False</string>
+	<key>LSUIElement</key>
+	<string>0</string>
+	<key>NSAppleScriptEnabled</key>
+	<string>False</string>
 	<key>NSHighResolutionCapable</key>
-	<true/>
+	<string>True</string>
+	<key>NSRequiresAquaSystemAppearance</key>
+	<string>False</string>
 </dict>
 </plist>
