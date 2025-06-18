@@ -148,23 +148,17 @@ class MatchingGUI:
         button_frame.pack(pady=10)
         
         # 配對按鈕
-        self.match_button = tk.Button(button_frame, text="開始配對", command=self.execute_matching,
-                                     bg="#4CAF50", fg="white", font=("Arial", 12, "bold"),
-                                     width=12, height=2)
+        self.match_button = tk.Button(button_frame, text="開始配對", command=self.execute_matching)
         self.match_button.pack(side=tk.LEFT, padx=5)
         
         # 檢查配置按鈕
-        check_button = tk.Button(button_frame, text="檢查配置", command=self.check_configuration,
-                                bg="#2196F3", fg="white", font=("Arial", 12),
-                                width=12, height=2)
-        check_button.pack(side=tk.LEFT, padx=5)
+        self.check_button = tk.Button(button_frame, text="檢查配置", command=self.check_configuration)
+        self.check_button.pack(side=tk.LEFT, padx=5)
         
         # 打開日誌按鈕
         if log_file_path:
-            log_button = tk.Button(button_frame, text="查看日誌", command=self.open_log_file,
-                                  bg="#FF9800", fg="white", font=("Arial", 12),
-                                  width=12, height=2)
-            log_button.pack(side=tk.LEFT, padx=5)
+            self.log_button = tk.Button(button_frame, text="查看日誌", command=self.open_log_file)
+            self.log_button.pack(side=tk.LEFT, padx=5)
         
         # 初始狀態訊息
         self.update_status("系統已就緒，請檢查配置或開始配對")
